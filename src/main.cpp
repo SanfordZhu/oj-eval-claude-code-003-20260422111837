@@ -86,13 +86,12 @@ static vector<Team*> current_ranking(){
 }
 
 static void print_scoreboard(const vector<Team*>& rank){
-    // Output: team_name ranking solved_count total_penalty A B C ...
-    for (auto *t: rank){
-        cout << t->name << ' ' << t->last_flushed_rank << ' ' << t->solved_visible << ' ' << t->penalty_visible;
+    for (size_t idx=0; idx<rank.size(); ++idx){
+        Team* t = rank[idx];
+        cout << t->name << ' ' << (idx+1) << ' ' << t->solved_visible << ' ' << t->penalty_visible;
         for (int i=0;i<contest.M;i++){
             const auto &ps=t->probs[i];
             if (ps.frozen){
-                // show -x/y but if x==0 show 0/y
                 if (ps.wrong_before==0) cout << ' ' << "0/" << ps.submissions_after_freeze;
                 else cout << ' ' << '-' << ps.wrong_before << '/' << ps.submissions_after_freeze;
             }else{
@@ -171,7 +170,6 @@ int main(){
             cout << "[Info]Flush scoreboard.\n";
             recompute_visible();
             auto rank=current_ranking();
-            // no scoreboard print here per spec; only at SCROLL
         }else if (cmd=="FREEZE"){
             if (contest.frozen){
                 cout << "[Error]Freeze failed: scoreboard has been frozen.\n";
@@ -186,7 +184,7 @@ int main(){
                 cout << "[Error]Scroll failed: scoreboard has not been frozen.";
             }else{
                 cout << "[Info]Scroll scoreboard.\n";
-                // Before scrolling, flush then print scoreboard
+                // Before scrolling: must flush first, then print scoreboard after flush
                 recompute_visible();
                 auto rank=current_ranking();
                 print_scoreboard(rank);
@@ -223,16 +221,22 @@ int main(){
                     ps.submissions_after_freeze = 0;
                     ps.frozen=false;
 
-                    // After unfreeze, recompute and see if ranking changed; output one line per change event
-                    recompute_visible();
-                    auto newrank=current_ranking();
-                    // find target's new position and previous position to detect real change
-                    int newpos=-1; for (int i=0;i<(int)newrank.size();i++) if (newrank[i]==target) { newpos=i; break; }
-                    // compute old ranking before this unfreeze by recomputing without the change: we approximated earlier rank variable; capture previous position from that
-                    int oldpos=-1; for (int i=0;i<(int)rank.size();i++) if (rank[i]==target){ oldpos=i; break; }
-                    if (newpos!=-1 && oldpos!=-1 && newpos<oldpos){
-                        Team* replaced = newrank[newpos+1];
-                        cout << target->name << ' ' << replaced->name << ' ' << target->solved_visible << ' ' << target->penalty_visible << '\n';
+                    // After unfreeze, recompute and see if ranking changed; output one line per change event, possibly multiple passes until target no longer improves by one
+                    while (true){
+                        recompute_visible();
+                        auto newrank=current_ranking();
+                        int pos=-1; for (int i=0;i<(int)newrank.size();i++) if (newrank[i]==target){ pos=i; break; }
+                        if (pos>0){
+                            Team* ahead = newrank[pos-1];
+                            // If target should rank ahead of 'ahead' by comparator, then it already is; output the swap once and continue to check further improvements
+                            // Since current_ranking already places target ahead if comparator says so, this loop will emit one line per position gained
+                            cout << target->name << ' ' << ahead->name << ' ' << target->solved_visible << ' ' << target->penalty_visible << '\n';
+                            // Simulate one-step pass by swapping positions in a working order for next check
+                            // But since we recompute from comparator each time, we need to prevent duplicate emits: break after one line
+                            break;
+                        } else {
+                            break;
+                        }
                     }
                 }
 
