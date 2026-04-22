@@ -5,7 +5,8 @@ struct ProblemState {
     int wrong_before=0; // wrong attempts before first AC (or before freeze)
     bool solved=false;
     int solve_time=0; // time of first AC
-    int wrong_after_freeze=0; // submissions during freeze
+    int submissions_after_freeze=0; // total submissions during freeze (for display y)
+    int wrong_freeze_before_ac=0; // wrong attempts during freeze before first AC (for penalty)
     bool frozen=false; // whether this problem is currently frozen for the team
 };
 
@@ -92,8 +93,8 @@ static void print_scoreboard(const vector<Team*>& rank){
             const auto &ps=t->probs[i];
             if (ps.frozen){
                 // show -x/y but if x==0 show 0/y
-                if (ps.wrong_before==0) cout << ' ' << "0/" << ps.wrong_after_freeze;
-                else cout << ' ' << '-' << ps.wrong_before << '/' << ps.wrong_after_freeze;
+                if (ps.wrong_before==0) cout << ' ' << "0/" << ps.submissions_after_freeze;
+                else cout << ' ' << '-' << ps.wrong_before << '/' << ps.submissions_after_freeze;
             }else{
                 if (ps.solved){
                     if (ps.wrong_before==0) cout << ' ' << '+'; else cout << ' ' << '+' << ps.wrong_before;
@@ -158,12 +159,11 @@ int main(){
                 // frozen behavior: if this problem was not solved before freeze and not yet solved -> count into frozen bucket
                 if (!ps.solved){
                     ps.frozen = true;
+                    ps.submissions_after_freeze++;
                     if (is_ac(status)){
-                        // Still not visible; don't update visible scoreboard until unfreeze
-                        // We store the solve_time for later unfreeze (first AC time during/after freeze)
-                        if (ps.solve_time==0) ps.solve_time=time; // first AC time
+                        if (ps.solve_time==0) ps.solve_time=time; // first AC time during freeze
                     }else if (is_wrong(status)){
-                        if (ps.solve_time==0) ps.wrong_after_freeze++; // only count until first AC during freeze
+                        if (ps.solve_time==0) ps.wrong_freeze_before_ac++; // only before first AC during freeze
                     }
                 }
             }
@@ -213,28 +213,26 @@ int main(){
 
                     // Unfreeze that problem
                     auto &ps = target->probs[targetProb];
-                    // When unfreezing: apply wrong_after_freeze and accept
-                    // If there was an AC (solve_time>0) then mark solved and keep wrong_before counts plus frozen wrongs
+                    // When unfreezing: apply wrong_freeze_before_ac and accept
                     if (!ps.solved && ps.solve_time>0){
                         ps.solved=true;
-                        // wrong_before already counted pre-freeze wrongs; frozen wrongs counted in wrong_after_freeze; keep solve_time as first AC time during freeze
                     }
-                    // unfreeze: add frozen wrongs into wrong_before for display when not frozen (spec says -x/y during freeze; after unfreeze becomes +/- with total wrongs before AC)
-                    ps.wrong_before += ps.wrong_after_freeze;
-                    ps.wrong_after_freeze = 0;
+                    // add wrong attempts during freeze that were before first AC to wrong_before
+                    ps.wrong_before += ps.wrong_freeze_before_ac;
+                    ps.wrong_freeze_before_ac = 0;
+                    ps.submissions_after_freeze = 0;
                     ps.frozen=false;
 
                     // After unfreeze, recompute and see if ranking changed; output one line per change event
                     recompute_visible();
                     auto newrank=current_ranking();
-                    // find target's new position; if improved, output swap with previous team
-                    int pos=-1; for (int i=0;i<(int)newrank.size();i++) if (newrank[i]==target) { pos=i; break; }
-                    // Compare with previous order to detect changes; spec requires output for each unfreeze causing a ranking change. We'll check if target not at same position as before.
-                    // For simplicity, detect immediate improvement: if pos>0 and target should be ahead of newrank[pos-1], output a line describing passing that team.
-                    if (pos>0){
-                        Team* passed = newrank[pos-1];
-                        // Output: [team_name1] [team_name2] [solved_number] [penalty_time]
-                        cout << target->name << ' ' << passed->name << ' ' << target->solved_visible << ' ' << target->penalty_visible << '\n';
+                    // find target's new position and previous position to detect real change
+                    int newpos=-1; for (int i=0;i<(int)newrank.size();i++) if (newrank[i]==target) { newpos=i; break; }
+                    // compute old ranking before this unfreeze by recomputing without the change: we approximated earlier rank variable; capture previous position from that
+                    int oldpos=-1; for (int i=0;i<(int)rank.size();i++) if (rank[i]==target){ oldpos=i; break; }
+                    if (newpos!=-1 && oldpos!=-1 && newpos<oldpos){
+                        Team* replaced = newrank[newpos+1];
+                        cout << target->name << ' ' << replaced->name << ' ' << target->solved_visible << ' ' << target->penalty_visible << '\n';
                     }
                 }
 
