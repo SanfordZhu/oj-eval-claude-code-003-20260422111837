@@ -131,6 +131,11 @@ int main(){
             }else{
                 contest.started=true; contest.duration=duration; contest.M=pc;
                 for (auto &t: contest.teams) t.probs.assign(pc, ProblemState());
+                // initialize last_flushed_rank to lexicographic order before first flush
+                vector<int> idxs(contest.teams.size());
+                iota(idxs.begin(), idxs.end(), 0);
+                sort(idxs.begin(), idxs.end(), [&](int a,int b){return contest.teams[a].name < contest.teams[b].name;});
+                for (size_t i=0;i<idxs.size();++i) contest.teams[idxs[i]].last_flushed_rank = (int)i+1;
                 cout << "[Info]Competition starts.\n";
             }
         }else if (cmd=="SUBMIT"){
