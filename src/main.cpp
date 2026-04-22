@@ -17,17 +17,15 @@ struct Submission { // keep minimal fields
 };
 
 struct Team {
+    int id=0;
     string name;
-    // problem states indexed 0..M-1
     vector<ProblemState> probs;
-    // submissions record (all, including after freeze) for QUERY_SUBMISSION
     vector<Submission> subs;
 
-    // scoring caches for current visible scoreboard (ignores frozen problems)
     int solved_visible=0;
     long long penalty_visible=0;
-    vector<int> solve_times_visible; // times of solved problems (visible), sorted desc for tie-break
-    int last_flushed_rank=0; // rank after last FLUSH
+    vector<int> solve_times_visible; // times of solved problems (visible), sorted desc
+    int last_flushed_rank=0;
 };
 
 struct Contest {
@@ -80,7 +78,7 @@ static vector<Team*> current_ranking(){
     vector<Team*> arr;
     arr.reserve(contest.teams.size());
     for (auto &t: contest.teams) arr.push_back(&t);
-    sort(arr.begin(), arr.end(), rank_cmp);
+    stable_sort(arr.begin(), arr.end(), rank_cmp);
     for (size_t i=0;i<arr.size();i++) arr[i]->last_flushed_rank = (int)i+1;
     return arr;
 }
@@ -227,22 +225,16 @@ int main(){
                     ps.frozen=false;
 
                     // After unfreeze, recompute and see if ranking changed; output one line per change event, possibly multiple passes until target no longer improves by one
-                    while (true){
-                        recompute_visible();
-                        auto newrank=current_ranking();
-                        int pos=-1; for (int i=0;i<(int)newrank.size();i++) if (newrank[i]==target){ pos=i; break; }
-                        if (pos>0){
-                            Team* ahead = newrank[pos-1];
-                            // If target should rank ahead of 'ahead' by comparator, then it already is; output the swap once and continue to check further improvements
-                            // Since current_ranking already places target ahead if comparator says so, this loop will emit one line per position gained
-                            cout << target->name << ' ' << ahead->name << ' ' << target->solved_visible << ' ' << target->penalty_visible << '\n';
-                            // Simulate one-step pass by swapping positions in a working order for next check
-                            // But since we recompute from comparator each time, we need to prevent duplicate emits: break after one line
-                            break;
-                        } else {
-                            break;
-                        }
+                    recompute_visible();
+                    auto newrank=current_ranking();
+                    int newpos=-1; for (int i=0;i<(int)newrank.size();i++) if (newrank[i]==target){ newpos=i; break; }
+                    int oldpos=-1; for (int i=0;i<(int)rank.size();i++) if (rank[i]==target){ oldpos=i; break; }
+                    if (newpos<oldpos){
+                        Team* replaced = newrank[newpos+1];
+                        cout << target->name << ' ' << replaced->name << ' ' << target->solved_visible << ' ' << target->penalty_visible << '\n';
                     }
+                    // update baseline rank for next iteration
+                    rank = newrank;
                 }
 
                 // After scrolling ends, print final scoreboard and lift frozen state
